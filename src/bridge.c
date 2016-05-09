@@ -267,9 +267,7 @@ void mqtt3_bridge_packet_cleanup(struct mosquitto *context)
 	_mosquitto_packet_cleanup(&(context->in_packet));
 }
 
-// @@@@@ >>
-
-// Bridge用config情報のcleanup
+/* cleanup of config information for Bridge */
 void mqtt3_bridge_cleanup(struct _mqtt3_bridge *bridge)
 {
 	int j = 0 ;
@@ -323,7 +321,7 @@ void mqtt3_bridge_cleanup(struct _mqtt3_bridge *bridge)
 #endif
 }
 
-// Bridge用config情報のコピー
+/* Copy of the config information for Bridge */
 int mqtt3_bridge_copy(struct _mqtt3_bridge *dist, struct _mqtt3_bridge *org )
 {
 	int j = 0 ;
@@ -413,7 +411,7 @@ int mqtt3_bridge_copy(struct _mqtt3_bridge *dist, struct _mqtt3_bridge *org )
 	return MOSQ_ERR_SUCCESS;
 }
 
-// ブリッジ情報の再読み込み&切断&接続
+/* Connected to a re-reading and disconnection of the bridge information */
 int mqtt3_bridge_reload(struct mosquitto_db *db)
 {
 	struct mqtt3_config config;
@@ -450,18 +448,18 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 			"bridge org: %d %s.",i, db->bridges[i]->bridge->name);
 	}
 
-	// 追加＆削除されたbridgeの確認
+	// confirmation of the deleted & added bridge
 	for( i = 0 ; i < db->config->bridge_count ; i ++ )
 	{
 		bool ari = false ;
 		for( j = 0 ; j < config.bridge_count ; j++ )
 		{
-			// 確認済み？
+			// Confirmed?
 			if( !*(check+j) )
 			{
 				if( !strcmp( db->config->bridges[i].name, config.bridges[j].name ) )
 				{
-					// 同じ
+					// the same
 					ari = true ;
 					*(check+j) = true ;
 					break ;
@@ -470,12 +468,11 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 		}
 		if( ari )
 		{
-			// 同じものがあるので、そのまま使用
+			// Because there is the same thing, as it is used
 		}
 		else
 		{
-			// 新しいconfigにないので切断->削除対象
-
+			// Disconnect because it is not in the new config -> deleted
 			dels_count++;
 			dels = _mosquitto_realloc(
 						dels,
@@ -498,7 +495,7 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 	{
 		if( !*(check+i) )
 		{
-			// 追加
+			// Add
 			adds_count++;
 			adds = _mosquitto_realloc(
 						adds,
@@ -521,7 +518,7 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 	_mosquitto_free(check);
 	mqtt3_config_cleanup( &config ) ;
 
-	// config数とcontext数が違う場合エラー(基本無い)
+	// If the error that config number and the context number is different (basic no)
 	if( db->config->bridge_count != db->bridge_count )
 	{
 		_mosquitto_free(adds);
@@ -534,7 +531,7 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 	{
 		if( dels_count > 0 )
 		{
-			// work用のconfigとcontext領域確保
+			// config and context area reserved for work
 			bridges=_mosquitto_malloc(
 						(db->config->bridge_count-dels_count)*sizeof(struct _mqtt3_bridge) );
 			if(!bridges)
@@ -619,7 +616,7 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 
 		if( adds_count > 0 )
 		{
-			// 追加分のconfig情報をreallocする。
+			// To realloc the additional configuration information
 			db->config->bridges=_mosquitto_realloc( db->config->bridges,
 						(db->config->bridge_count+adds_count)*sizeof(struct _mqtt3_bridge) );
 			if(!db->config->bridges)
@@ -628,12 +625,12 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
 				return MOSQ_ERR_NOMEM;
 			}
-			// 現状contextで使用しているconfigを付け替え
+			// Transfer the config you are using at present context
 			for( i = 0 ; i < db->bridge_count ; i++ )
 			{
 				db->bridges[i]->bridge = &db->config->bridges[i];
 			}
-			// 追加bridge分
+			// Additional bridge loop
 			for( i = 0 ; i < adds_count ; i++ )
 			{
 				mqtt3_bridge_copy(
@@ -671,5 +668,4 @@ int mqtt3_bridge_reload(struct mosquitto_db *db)
 	}
 	return MOSQ_ERR_SUCCESS;
 }
-// @@@@@ <<
 #endif

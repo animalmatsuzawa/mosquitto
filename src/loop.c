@@ -357,17 +357,15 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 		if(flag_reload){
 			_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "Reloading config.");
 
-// @@@@@ >>
 #ifdef WITH_BRIDGE
 			extern int mqtt3_bridge_reload(struct mosquitto_db *db) ;
-			// ブリッジ情報の再読み込み&切断&接続
+			/* Connected to a re-reading and disconnection of the bridge information. */
 			int rc = mqtt3_bridge_reload(db);
 			if( rc != MOSQ_ERR_SUCCESS)
 			{
 				return rc;
 			}
 #endif
-// @@@@@ <<
 			mqtt3_config_read(db->config, true, false);
 			mosquitto_security_cleanup(db, true);
 			mosquitto_security_init(db, true);
