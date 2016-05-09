@@ -207,7 +207,7 @@ int mqtt3_bridge_connect(struct mosquitto_db *db, struct mosquitto *context)
 		}
 	}
 
-	_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Connecting bridge %s (%s:%d)", context->bridge->name, context->bridge->addresses[context->bridge->cur_address].address, context->bridge->addresses[context->bridge->cur_address].port);
+	_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "Connecting bridge %s (%s:%d)", context->bridge->name, context->bridge->addresses[context->bridge->cur_address].address, context->bridge->addresses[context->bridge->cur_address].port);
 	rc = _mosquitto_socket_connect(context, context->bridge->addresses[context->bridge->cur_address].address, context->bridge->addresses[context->bridge->cur_address].port, NULL, false);
 	if(rc > 0 ){
 		if(rc == MOSQ_ERR_TLS){
@@ -267,4 +267,409 @@ void mqtt3_bridge_packet_cleanup(struct mosquitto *context)
 	_mosquitto_packet_cleanup(&(context->in_packet));
 }
 
+// @@@@@ >>
+
+// Bridge用config情報のcleanup
+void mqtt3_bridge_cleanup(struct _mqtt3_bridge *bridge)
+{
+	int j = 0 ;
+	if(bridge->name) _mosquitto_free(bridge->name);
+	if(bridge->addresses){
+		for(j=0; j<bridge->address_count; j++){
+			_mosquitto_free(bridge->addresses[j].address);
+		}
+		_mosquitto_free(bridge->addresses);
+	}
+	if(bridge->remote_clientid)
+		_mosquitto_free(bridge->remote_clientid);
+	if(bridge->remote_username)
+		_mosquitto_free(bridge->remote_username);
+	if(bridge->remote_password)
+		_mosquitto_free(bridge->remote_password);
+	if(bridge->local_clientid)
+		_mosquitto_free(bridge->local_clientid);
+	if(bridge->local_username)
+		_mosquitto_free(bridge->local_username);
+	if(bridge->local_password)
+		_mosquitto_free(bridge->local_password);
+	if(bridge->topics){
+		for(j=0; j<bridge->topic_count; j++){
+			if(bridge->topics[j].topic)
+				_mosquitto_free(bridge->topics[j].topic);
+			if(bridge->topics[j].local_prefix)
+				_mosquitto_free(bridge->topics[j].local_prefix);
+			if(bridge->topics[j].remote_prefix)
+				_mosquitto_free(bridge->topics[j].remote_prefix);
+			if(bridge->topics[j].local_topic)
+				_mosquitto_free(bridge->topics[j].local_topic);
+			if(bridge->topics[j].remote_topic)
+				_mosquitto_free(bridge->topics[j].remote_topic);
+		}
+		_mosquitto_free(bridge->topics);
+	}
+	if(bridge->notification_topic)
+		_mosquitto_free(bridge->notification_topic);
+#ifdef WITH_TLS
+	if(bridge->tls_version)
+		_mosquitto_free(bridge->tls_version);
+	if(bridge->tls_cafile)
+		_mosquitto_free(bridge->tls_cafile);
+#ifdef REAL_WITH_TLS_PSK
+	if(bridge->tls_psk_identity)
+		_mosquitto_free(bridge->tls_psk_identity);
+	if(bridge->tls_psk)
+		_mosquitto_free(bridge->tls_psk);
+#endif
+#endif
+}
+
+// Bridge用config情報のコピー
+int mqtt3_bridge_copy(struct _mqtt3_bridge *dist, struct _mqtt3_bridge *org )
+{
+	int j = 0 ;
+	memset( dist, 0x00, sizeof(struct _mqtt3_bridge) ) ;
+
+	dist->keepalive = org->keepalive;
+	dist->notifications = org->notifications;
+	dist->start_type = org->start_type;
+	dist->idle_timeout = org->idle_timeout;
+	dist->restart_timeout = org->restart_timeout;
+	dist->threshold = org->threshold;
+	dist->try_private = org->try_private;
+	dist->attempt_unsubscribe = org->attempt_unsubscribe;
+	dist->protocol_version = org->protocol_version;
+
+
+	if(org->name) dist->name = _mosquitto_strdup(org->name);
+	if(org->addresses){
+		dist->address_count=org->address_count;
+		dist->addresses = _mosquitto_realloc(
+								dist->addresses,
+								sizeof(struct bridge_address)*dist->address_count);
+		if(!dist->addresses){
+			_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+			return MOSQ_ERR_NOMEM;
+		}
+		memset( dist->addresses, 0x00,
+			sizeof(struct bridge_address)*dist->address_count ) ;
+		for(j=0; j<org->address_count; j++)
+		{
+			dist->addresses[j].address = _mosquitto_strdup(org->addresses[j].address);
+			dist->addresses[j].port = org->addresses[j].port;
+		}
+	}
+	if(org->remote_clientid)
+		dist->remote_clientid=_mosquitto_strdup(org->remote_clientid);
+	if(org->remote_username)
+		dist->remote_username=_mosquitto_strdup(org->remote_username);
+	if(org->remote_password)
+		dist->remote_password=_mosquitto_strdup(org->remote_password);
+	if(org->local_clientid)
+		dist->local_clientid=_mosquitto_strdup(org->local_clientid);
+	if(org->local_username)
+		dist->local_username=_mosquitto_strdup(org->local_username);
+	if(org->local_password)
+		dist->local_password=_mosquitto_strdup(org->local_password);
+	if(org->topics)
+	{
+		dist->topic_count=org->topic_count;
+		dist->topics = _mosquitto_realloc(
+							dist->topics,
+							sizeof(struct _mqtt3_bridge_topic)*dist->topic_count);
+		if(!dist->topics){
+			_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+			return MOSQ_ERR_NOMEM;
+		}
+		memset( dist->topics, 0x00,
+			sizeof(struct _mqtt3_bridge_topic)*dist->topic_count ) ;
+		for(j=0; j<org->topic_count; j++)
+		{
+			if(org->topics[j].topic)
+				dist->topics[j].topic=_mosquitto_strdup(org->topics[j].topic);
+			if(org->topics[j].local_prefix)
+				dist->topics[j].local_prefix= _mosquitto_strdup(org->topics[j].local_prefix);
+			if(org->topics[j].remote_prefix)
+				dist->topics[j].remote_prefix=_mosquitto_strdup(org->topics[j].remote_prefix);
+			if(org->topics[j].local_topic)
+				dist->topics[j].local_topic=_mosquitto_strdup(org->topics[j].local_topic);
+			if(org->topics[j].remote_topic)
+				dist->topics[j].remote_topic=_mosquitto_strdup(org->topics[j].remote_topic);
+		}
+	}
+	if(org->notification_topic)
+		dist->notification_topic=_mosquitto_strdup(org->notification_topic);
+#ifdef WITH_TLS
+	if(org->tls_version)
+		dist->tls_version=_mosquitto_strdup(org->tls_version);
+	if(org->tls_cafile)
+		dist->tls_cafile=_mosquitto_strdup(org->tls_cafile);
+#ifdef REAL_WITH_TLS_PSK
+	if(org->tls_psk_identity)
+		dist->tls_psk_identity=_mosquitto_strdup(org->tls_psk_identity);
+	if(org->tls_psk)
+		dist->tls_psk=_mosquitto_strdup(org->tls_psk);
+#endif
+#endif
+	return MOSQ_ERR_SUCCESS;
+}
+
+// ブリッジ情報の再読み込み&切断&接続
+int mqtt3_bridge_reload(struct mosquitto_db *db)
+{
+	struct mqtt3_config config;
+	int i = 0 ;
+	int j = 0 ;
+	struct _mqtt3_bridge * adds = NULL;
+	int adds_count = 0;
+	struct _mqtt3_bridge * dels = NULL;
+	int dels_count = 0;
+
+	struct _mqtt3_bridge * bridges = NULL;
+	int bridges_count = 0;
+
+	struct mosquitto **context_bridges = NULL ;
+	int context_bridges_count = 0 ;
+
+	// read config file
+	mqtt3_config_init(&config);
+	config.config_file=_mosquitto_strdup(db->config->config_file);
+	if( mqtt3_config_read(&config, true, true))
+	{
+		mqtt3_config_cleanup( &config ) ;
+		_mosquitto_log_printf(
+			NULL, MOSQ_LOG_ERR, "Error: Unable to open configuration file.");
+		return MOSQ_ERR_INVAL;
+	}
+
+	bool * check = _mosquitto_calloc( config.bridge_count, sizeof(bool) );
+	memset( check, 0x00, sizeof(bool)*config.bridge_count);
+
+	for( i = 0 ; i < db->bridge_count ; i ++ )
+	{
+		_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE,
+			"bridge org: %d %s.",i, db->bridges[i]->bridge->name);
+	}
+
+	// 追加＆削除されたbridgeの確認
+	for( i = 0 ; i < db->config->bridge_count ; i ++ )
+	{
+		bool ari = false ;
+		for( j = 0 ; j < config.bridge_count ; j++ )
+		{
+			// 確認済み？
+			if( !*(check+j) )
+			{
+				if( !strcmp( db->config->bridges[i].name, config.bridges[j].name ) )
+				{
+					// 同じ
+					ari = true ;
+					*(check+j) = true ;
+					break ;
+				}
+			}
+		}
+		if( ari )
+		{
+			// 同じものがあるので、そのまま使用
+		}
+		else
+		{
+			// 新しいconfigにないので切断->削除対象
+
+			dels_count++;
+			dels = _mosquitto_realloc(
+						dels,
+						dels_count*sizeof(struct _mqtt3_bridge));
+			if(!dels)
+			{
+				_mosquitto_free(check);
+				mqtt3_config_cleanup( &config ) ;
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+				return MOSQ_ERR_NOMEM;
+			}
+			memset( &(dels[dels_count-1]), 0x00, sizeof(struct _mqtt3_bridge)) ;
+			mqtt3_bridge_copy(
+				&(dels[dels_count-1]),
+				&(db->config->bridges[i]) ) ;
+		}
+	}
+
+	for( i = 0 ; i < config.bridge_count ; i ++ )
+	{
+		if( !*(check+i) )
+		{
+			// 追加
+			adds_count++;
+			adds = _mosquitto_realloc(
+						adds,
+						adds_count*sizeof(struct _mqtt3_bridge));
+			if(!adds)
+			{
+				_mosquitto_free(dels);
+				_mosquitto_free(check);
+				mqtt3_config_cleanup( &config ) ;
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+				return MOSQ_ERR_NOMEM;
+			}
+			memset( &(adds[adds_count-1]), 0x00, sizeof(struct _mqtt3_bridge)) ;
+			mqtt3_bridge_copy(
+				&(adds[adds_count-1]),
+				&(config.bridges[i]) ) ;
+		}
+	}
+
+	_mosquitto_free(check);
+	mqtt3_config_cleanup( &config ) ;
+
+	// config数とcontext数が違う場合エラー(基本無い)
+	if( db->config->bridge_count != db->bridge_count )
+	{
+		_mosquitto_free(adds);
+		_mosquitto_free(dels);
+		_mosquitto_log_printf(NULL, MOSQ_LOG_ERR,
+			"Error bridge config unmatch. why ?? %d!=%d",
+			db->config->bridge_count, db->bridge_count);
+	}
+	else
+	{
+		if( dels_count > 0 )
+		{
+			// work用のconfigとcontext領域確保
+			bridges=_mosquitto_malloc(
+						(db->config->bridge_count-dels_count)*sizeof(struct _mqtt3_bridge) );
+			if(!bridges)
+			{
+				_mosquitto_free(adds);
+				_mosquitto_free(dels);
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+				return MOSQ_ERR_NOMEM;
+			}
+			context_bridges=_mosquitto_malloc(
+								(db->bridge_count-dels_count)*sizeof(struct mosquitto *) );
+			if(!context_bridges)
+			{
+				_mosquitto_free(adds);
+				_mosquitto_free(dels);
+				_mosquitto_free(bridges);
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+				return MOSQ_ERR_NOMEM;
+			}
+
+			bool del = false ;
+			for( i = 0 ; i < db->bridge_count ; i++ )
+			{
+				del = false ;
+				for( j = 0 ; j < dels_count ; j ++ )
+				{
+					if( !strcmp( db->bridges[i]->bridge->name, dels[j].name ) )
+					{
+						del = true ;
+						break ;
+					}
+				}
+				if( !del )
+				{
+					_mosquitto_log_printf(NULL, MOSQ_LOG_INFO,
+							"bridge stay: %s.",db->bridges[i]->bridge->name);
+
+					mqtt3_bridge_copy(
+						&(bridges[bridges_count]),
+						db->bridges[i]->bridge ) ;
+
+					context_bridges[context_bridges_count] = db->bridges[i];
+					context_bridges[context_bridges_count]->bridge =
+						&(bridges[bridges_count]) ;
+					bridges_count++;
+					context_bridges_count++;
+				}
+				else
+				{
+					_mosquitto_log_printf(NULL, MOSQ_LOG_INFO,
+							"bridge del: %s.",db->bridges[i]->bridge->name);
+
+					// disconnetc & clean
+					mqtt3_context_cleanup(db, db->bridges[i], true);
+				}
+			}
+
+			// old config clean
+			for( i = 0 ; i < db->config->bridge_count ; i++ )
+			{
+				mqtt3_bridge_cleanup(&(db->config->bridges[i]));
+			}
+
+			// bridge config update
+			_mosquitto_free(db->config->bridges);
+			db->config->bridge_count=bridges_count;
+			db->config->bridges = bridges ;
+
+			// bridge context update
+			_mosquitto_free(db->bridges);
+			db->bridge_count=context_bridges_count ;
+			db->bridges=context_bridges;
+
+			// clean delete work area
+			for( j = 0 ; j < dels_count ; j ++ )
+			{
+				mqtt3_bridge_cleanup(&(dels[j]));
+			}
+			_mosquitto_free(dels);
+
+		}
+
+		if( adds_count > 0 )
+		{
+			// 追加分のconfig情報をreallocする。
+			db->config->bridges=_mosquitto_realloc( db->config->bridges,
+						(db->config->bridge_count+adds_count)*sizeof(struct _mqtt3_bridge) );
+			if(!db->config->bridges)
+			{
+				_mosquitto_free(adds);
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Out of memory.");
+				return MOSQ_ERR_NOMEM;
+			}
+			// 現状contextで使用しているconfigを付け替え
+			for( i = 0 ; i < db->bridge_count ; i++ )
+			{
+				db->bridges[i]->bridge = &db->config->bridges[i];
+			}
+			// 追加bridge分
+			for( i = 0 ; i < adds_count ; i++ )
+			{
+				mqtt3_bridge_copy(
+						&(db->config->bridges[db->config->bridge_count]),
+						&(adds[i]) ) ;
+
+				_mosquitto_log_printf(NULL, MOSQ_LOG_INFO,
+						"bridge add: %s.",
+						db->config->bridges[db->config->bridge_count].name);
+				db->config->bridge_count ++ ;
+
+				// connect to add bridge
+				if(mqtt3_bridge_new(
+						db,
+						&(db->config->bridges[db->config->bridge_count-1])))
+				{
+					_mosquitto_log_printf(NULL, MOSQ_LOG_WARNING,
+							"Warning: Unable to connect to bridge %s.",
+								db->config->bridges[db->config->bridge_count-1].name);
+				}
+			}
+
+			// clean add work area
+			for( j = 0 ; j < adds_count ; j ++ )
+			{
+				mqtt3_bridge_cleanup(&(adds[j]));
+			}
+			_mosquitto_free(adds);
+		}
+	}
+	for( i = 0 ; i < db->bridge_count ; i ++ )
+	{
+		_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE,
+					"bridge new: %d %s.",i, db->bridges[i]->bridge->name);
+	}
+	return MOSQ_ERR_SUCCESS;
+}
+// @@@@@ <<
 #endif

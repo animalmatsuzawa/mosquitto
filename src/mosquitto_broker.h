@@ -370,7 +370,7 @@ int mqtt3_config_parse_args(struct mqtt3_config *config, int argc, char *argv[])
  * If reload is true, don't process config options that shouldn't be reloaded (listeners etc)
  * Returns 0 on success, 1 if there is a configuration error or if a file cannot be opened.
  */
-int mqtt3_config_read(struct mqtt3_config *config, bool reload);
+int mqtt3_config_read(struct mqtt3_config *config, bool reload,  bool bridge);
 /* Free all config data. */
 void mqtt3_config_cleanup(struct mqtt3_config *config);
 

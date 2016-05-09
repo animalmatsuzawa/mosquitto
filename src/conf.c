@@ -62,7 +62,7 @@ extern SERVICE_STATUS_HANDLE service_handle;
 static int _conf_parse_bool(char **token, const char *name, bool *value, char *saveptr);
 static int _conf_parse_int(char **token, const char *name, int *value, char *saveptr);
 static int _conf_parse_string(char **token, const char *name, char **value, char *saveptr);
-static int _config_read_file(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *config_tmp, int level, int *lineno);
+static int _config_read_file(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *config_tmp, int level, int *lineno, bool bridge);
 
 static int _conf_attempt_resolve(const char *host, const char *text, int log, const char *msg)
 {
@@ -334,7 +334,7 @@ int mqtt3_config_parse_args(struct mqtt3_config *config, int argc, char *argv[])
 					return MOSQ_ERR_NOMEM;
 				}
 
-				if(mqtt3_config_read(config, false)){
+				if(mqtt3_config_read(config, false, false)){
 					_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Unable to open configuration file.");
 					return MOSQ_ERR_INVAL;
 				}
@@ -447,7 +447,7 @@ int mqtt3_config_parse_args(struct mqtt3_config *config, int argc, char *argv[])
 	return MOSQ_ERR_SUCCESS;
 }
 
-int mqtt3_config_read(struct mqtt3_config *config, bool reload)
+int mqtt3_config_read(struct mqtt3_config *config, bool reload, bool bridge)
 {
 	int rc = MOSQ_ERR_SUCCESS;
 	struct config_recurse cr;
@@ -470,7 +470,7 @@ int mqtt3_config_read(struct mqtt3_config *config, bool reload)
 		/* Re-initialise appropriate config vars to default for reload. */
 		_config_init_reload(config);
 	}
-	rc = _config_read_file(config, reload, config->config_file, &cr, 0, &lineno);
+	rc = _config_read_file(config, reload, config->config_file, &cr, 0, &lineno, bridge);
 	if(rc){
 		_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error found at %s:%d.", config->config_file, lineno);
 		return rc;
@@ -535,7 +535,7 @@ int mqtt3_config_read(struct mqtt3_config *config, bool reload)
 	return MOSQ_ERR_SUCCESS;
 }
 
-int _config_read_file_core(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *cr, int level, int *lineno, FILE *fptr)
+int _config_read_file_core(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *cr, int level, int *lineno, FILE *fptr, bool bridge)
 {
 	int rc;
 	char buf[1024];
@@ -585,7 +585,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 					if(_conf_parse_string(&token, "acl_file", &config->acl_file, saveptr)) return MOSQ_ERR_INVAL;
 				}else if(!strcmp(token, "address") || !strcmp(token, "addresses")){
 #ifdef WITH_BRIDGE
-					if(reload) continue; // FIXME
+					if(reload&&!bridge) continue; // FIXME
 					if(!cur_bridge || cur_bridge->addresses){
 						_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge configuration.");
 						return MOSQ_ERR_INVAL;
@@ -1024,7 +1024,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 					if(_conf_parse_string(&token, "clientid_prefixes", &config->clientid_prefixes, saveptr)) return MOSQ_ERR_INVAL;
 				}else if(!strcmp(token, "connection")){
 #ifdef WITH_BRIDGE
-					if(reload) continue; // FIXME
+					if(reload&&!bridge) continue; // FIXME
 					token = strtok_r(NULL, " ", &saveptr);
 					if(token){
 						config->bridge_count++;
@@ -1112,7 +1112,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 							snprintf(conf_file, len, "%s\\%s", token, find_data.cFileName);
 							conf_file[len] = '\0';
 								
-							rc = _config_read_file(config, reload, conf_file, cr, level+1, &lineno_ext);
+							rc = _config_read_file(config, reload, conf_file, cr, level+1, &lineno_ext,bridge);
 							if(rc){
 								FindClose(fh);
 								_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error found at %s:%d.", conf_file, lineno_ext);
@@ -1141,7 +1141,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 									snprintf(conf_file, len, "%s/%s", token, de->d_name);
 									conf_file[len] = '\0';
 									
-									rc = _config_read_file(config, reload, conf_file, cr, level+1, &lineno_ext);
+									rc = _config_read_file(config, reload, conf_file, cr, level+1, &lineno_ext,bridge);
 									if(rc){
 										closedir(dh);
 										_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error found at %s:%d.", conf_file, lineno_ext);
@@ -1695,7 +1695,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 #endif
 				}else if(!strcmp(token, "topic")){
 #ifdef WITH_BRIDGE
-					if(reload) continue; // FIXME
+					if(reload&&!bridge) continue; // FIXME
 					if(!cur_bridge){
 						_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge configuration.");
 						return MOSQ_ERR_INVAL;
@@ -1913,7 +1913,7 @@ int _config_read_file_core(struct mqtt3_config *config, bool reload, const char 
 	return MOSQ_ERR_SUCCESS;
 }
 
-int _config_read_file(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *cr, int level, int *lineno)
+int _config_read_file(struct mqtt3_config *config, bool reload, const char *file, struct config_recurse *cr, int level, int *lineno, bool bridge)
 {
 	int rc;
 	FILE *fptr = NULL;
@@ -1924,7 +1924,7 @@ int _config_read_file(struct mqtt3_config *config, bool reload, const char *file
 		return 1;
 	}
 
-	rc = _config_read_file_core(config, reload, file, cr, level, lineno, fptr);
+	rc = _config_read_file_core(config, reload, file, cr, level, lineno, fptr, bridge);
 	fclose(fptr);
 
 	return rc;
