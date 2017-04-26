@@ -82,11 +82,25 @@ add_executable(mosquitto ${MOSQ_SRCS})
 
 set (MOSQ_LIBS ${MOSQ_LIBS} ${OPENSSL_LIBRARIES})
 
+# Check for getaddrinfo_a
+include(CheckLibraryExists)
+check_library_exists(anl getaddrinfo_a  "" HAVE_GETADDRINFO_A)
+if (HAVE_GETADDRINFO_A)
+	add_definitions(-DHAVE_GETADDRINFO_A)
+	set (MOSQ_LIBS ${MOSQ_LIBS} anl)
+endif (HAVE_GETADDRINFO_A)
+
+
+
 if (UNIX)
 	if (APPLE)
 		set (MOSQ_LIBS ${MOSQ_LIBS} dl m)
 	else (APPLE)
-		set (MOSQ_LIBS ${MOSQ_LIBS} rt dl m)
+		set (MOSQ_LIBS ${MOSQ_LIBS} dl m)
+		find_library(LIBRT rt)
+		if (LIBRT)
+			set (MOSQ_LIBS ${MOSQ_LIBS} rt)
+		endif (LIBRT)
 	endif (APPLE)
 endif (UNIX)
 
@@ -117,13 +131,13 @@ if (UNIX)
 	endif (APPLE)
 endif (UNIX)
 
-install(TARGETS mosquitto RUNTIME DESTINATION ${SBINDIR} LIBRARY DESTINATION ${LIBDIR})
-install(FILES mosquitto_plugin.h DESTINATION ${INCLUDEDIR})
+install(TARGETS mosquitto RUNTIME DESTINATION "${SBINDIR}" LIBRARY DESTINATION "${LIBDIR}")
+install(FILES mosquitto_plugin.h DESTINATION "${INCLUDEDIR}")
 
 if (${WITH_TLS} STREQUAL ON)
 	add_executable(mosquitto_passwd mosquitto_passwd.c)
-	target_link_libraries(mosquitto_passwd ${OPENSSL_LIBRARIES})
-	install(TARGETS mosquitto_passwd RUNTIME DESTINATION ${BINDIR} LIBRARY DESTINATION ${LIBDIR})
+	target_link_libraries(mosquitto_passwd "${OPENSSL_LIBRARIES}")
+	install(TARGETS mosquitto_passwd RUNTIME DESTINATION "${BINDIR}" LIBRARY DESTINATION "${LIBDIR}")
 endif (${WITH_TLS} STREQUAL ON)
 
 if (UNIX)
